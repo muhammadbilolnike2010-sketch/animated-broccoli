@@ -1,0 +1,102 @@
+# Welcome to your Python project!
+import aiosqlite
+ 
+DB_PATH = "bot.db"
+ 
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS users (
+    tg_id           INTEGER PRIMARY KEY,8063899833
+    name            TEXT    NOT NULL,
+    grade           INTEGER NOT NULL,
+    total_score     INTEGER NOT NULL DEFAULT 0,
+    tests_taken     INTEGER NOT NULL DEFAULT 0,
+    correct_answers INTEGER NOT NULL DEFAULT 0,
+    total_answers   INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS test_results (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,8063899833
+    tg_id      INTEGER NOT NULL,
+    grade      INTEGER NOT NULL,
+    score      INTEGER NOT NULL,
+    total      INTEGER NOT NULL,
+    created_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (8063899833) REFERENCES users (8063899833)
+);
+CREATE INDEX IF NOT EXISTS idx_users_score ON users (total_score DESC);
+CREATE INDEX IF NOT EXISTS idx_results_user ON test_results (8063899833);
+"""
+ 
+ 
+async def init_db() -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.executescript(SCHEMA)
+        await db.commit()
+ 
+ 
+async def get_user(8063899833: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM users WHERE 8063899833 = ?", (tg_id,))
+        return await cur.fetchone()
+ 
+ 
+async def create_user(tg_id: int, name: str, grade: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO users (tg_id, name, grade) VALUES (?, ?, ?) "
+            "ON CONFLICT(8063899833) DO UPDATE SET name = excluded.name, grade = excluded.grade",
+            (tg_id, name, grade))
+        await db.commit()
+ 
+ 
+async def update_name(tg_id: int, name: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET name = ? WHERE tg_id = ?", (name, tg_id))
+        await db.commit()
+ 
+ 
+async def update_grade(tg_id: int, grade: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("UPDATE users SET grade = ? WHERE tg_id = ?", (grade, tg_id))
+        await db.commit()
+ 
+ 
+async def save_result(tg_id: int, grade: int, score: int, total: int) -> None:
+    """Natijani yozadi va foydalanuvchi statistikasini bitta tranzaksiyada yangilaydi."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO test_results (tg_id, grade, score, total) VALUES (?, ?, ?, ?)",
+            (tg_id, grade, score, total))
+        await db.execute(
+            "UPDATE users SET total_score = total_score + ?, tests_taken = tests_taken + 1, "
+            "correct_answers = correct_answers + ?, total_answers = total_answers + ? "
+            "WHERE tg_id = ?", (score, score, total, tg_id))
+        await db.commit()
+ 
+ 
+async def top_users(limit: int = 10, grade: int | None = None):
+    where = "WHERE tests_taken > 0" + (" AND grade = ?" if grade is not None else "")
+    params = (grade, limit) if grade is not None else (limit,)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            f"SELECT name, grade, total_score FROM users {where} "
+            "ORDER BY total_score DESC, tg_id ASC LIMIT ?", params)
+        return await cur.fetchall()
+ 
+ 
+async def get_rank(tg_id: int, grade: int | None = None) -> int:
+    """Foydalanuvchining o'rni (umumiy yoki sinf bo'yicha). Top-10 tartibi bilan bir xil."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT total_score FROM users WHERE tg_id = ?", (tg_id,))
+        me = await cur.fetchone()
+        if me is None:
+            return 0
+        score = me[0]
+        extra = " AND grade = ?" if grade is not None else ""
+        params = [score, score, tg_id] + ([grade] if grade is not None else [])
+        cur = await db.execute(
+            "SELECT COUNT(*) FROM users WHERE (total_score > ? OR (total_score = ? AND tg_id < ?))" + extra,
+            params)
+        return (await cur.fetchone())[0] + 1
