@@ -1,0 +1,117 @@
+# Welcome to your Python project!
+"""📝 Test bo'limi."""
+import secrets
+from dataclasses import asdict
+from html import escape
+ 
+from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+ 
+import db
+from keyboards import BTN_TEST, answers_kb, grades_kb, main_menu, result_kb
+from questions import generate_test
+from states import TestState
+ 
+router = Router()
+N_QUESTIONS = 10
+ 
+ 
+def render_question(i: int, total: int, grade: int, q: dict) -> str:
+    return f"📝 <b>{grade}-sinf · {i + 1}/{total}-savol</b>\n\n{escape(q['text'])}"
+ 
+ 
+async def begin_test(message: Message, state: FSMContext, grade: int) -> None:
+    questions = [asdict(q) for q in generate_test(grade, N_QUESTIONS)]
+    tid = secrets.token_hex(3)  # eski testning tugmalari yangi testga ta'sir qilmasligi uchun
+    await state.set_state(TestState.running)
+    await state.set_data({"tid": tid, "grade": grade, "i": 0, "score": 0, "qs": questions})
+    q = questions[0]
+    await message.answer(render_question(0, len(questions), grade, q),
+                         reply_markup=answers_kb(tid, 0, q["options"]))
+ 
+ 
+@router.message(F.text == BTN_TEST)
+async def choose_grade(m: Message):
+    if not await db.get_user(m.from_user.id):
+        return await m.answer("Avval /start buyrug'ini yuboring.")
+    await m.answer("Qaysi sinf mavzusida test yechasiz? 👇", reply_markup=grades_kb("test_grade"))
+ 
+ 
+@router.callback_query(F.data.startswith("test_grade:"))
+async def pick_grade(cb: CallbackQuery, state: FSMContext):
+    if not await db.get_user(cb.from_user.id):
+        return await cb.answer("Avval /start ni bosing.", show_alert=True)
+    grade = int(cb.data.split(":")[1])
+    await cb.message.edit_text(f"✅ {grade}-sinf testi boshlandi. Omad! 🍀")
+    await begin_test(cb.message, state, grade)
+    await cb.answer()
+ 
+ 
+@router.callback_query(F.data.startswith("ans:"), TestState.running)
+async def on_answer(cb: CallbackQuery, state: FSMContext):
+    _, tid, qi, oi = cb.data.split(":")
+    qi, oi = int(qi), int(oi)
+    data = await state.get_data()
+    # Ikki marta bosish / eski test tugmasi: faqat joriy savolga bir marta javob qabul qilinadi
+    if tid != data["tid"] or qi != data["i"]:
+        return await cb.answer("Bu savolga javob allaqachon qabul qilingan.")
+ 
+    qs, grade = data["qs"], data["grade"]
+    q, total = qs[qi], len(qs)
+    ok = oi == q["correct"]
+    score = data["score"] + int(ok)
+    finished = qi + 1 >= total
+    if finished:
+        await state.clear()
+    else:
+        await state.update_data(i=qi + 1, score=score)
+ 
+    feedback = ("✅ To'g'ri! +1 ball" if ok
+                else f"❌ Noto'g'ri. To'g'ri javob: {escape(q['options'][q['correct']])}")
+    try:
+        await cb.message.edit_text(f"{render_question(qi, total, grade, q)}\n\n{feedback}")
+    except Exception:
+        pass
+ 
+    if not finished:
+        nq = qs[qi + 1]
+        await cb.message.answer(render_question(qi + 1, total, grade, nq),
+                                reply_markup=answers_kb(tid, qi + 1, nq["options"]))
+    else:
+        await db.save_result(cb.from_user.id, grade, score, total)
+        await cb.message.answer(
+            f"🏁 <b>Test yakunlandi!</b> ({grade}-sinf)\n\n"
+            f"✅ To'g'ri javoblar: <b>{score}/{total}</b>\n"
+            f"⭐ Olingan ball: <b>{score}</b>\n"
+            f"📊 Foiz: <b>{round(score / total * 100)}%</b>",
+            reply_markup=result_kb(grade))
+    await cb.answer()
+ 
+ 
+@router.callback_query(F.data.startswith("ans:"))
+async def stale_answer(cb: CallbackQuery):
+    await cb.answer("Bu test tugagan yoki bekor qilingan.")
+ 
+ 
+@router.callback_query(F.data.startswith("again:"))
+async def again(cb: CallbackQuery, state: FSMContext):
+    if await state.get_state() == TestState.running.state:
+        return await cb.answer("Test allaqachon boshlangan.")
+    grade = int(cb.data.split(":")[1])
+    try:
+        await cb.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await begin_test(cb.message, state, grade)
+    await cb.answer()
+ 
+ 
+@router.callback_query(F.data == "menu")
+async def to_menu(cb: CallbackQuery):
+    try:
+        await cb.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await cb.message.answer("Asosiy menyu 👇", reply_markup=main_menu())
+    await cb.answer()
