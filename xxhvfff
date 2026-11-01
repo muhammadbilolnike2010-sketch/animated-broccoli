@@ -1,0 +1,164 @@
+# Welcome to your Python project!
+"""/start, 👤 Kabinet, 🏆 Ballar."""
+from html import escape
+ 
+from aiogram import F, Router
+from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+ 
+import db
+from keyboards import (BTN_CABINET, BTN_RATING, MENU_BUTTONS, cabinet_kb,
+                       grades_kb, main_menu, rating_kb)
+from states import EditName, Reg, TestState
+ 
+router = Router()
+NEED_START = "Avval /start buyrug'ini yuboring."
+ 
+ 
+def valid_name(text: str | None) -> str | None:
+    t = (text or "").strip()
+    if 2 <= len(t) <= 30 and t not in MENU_BUTTONS and not t.startswith("/"):
+        return t
+    return None
+ 
+ 
+async def leave_state(state: FSMContext) -> None:
+    """Ism kiritish kabi holatlarni tozalaydi, ammo davom etayotgan testni bekor qilmaydi."""
+    if await state.get_state() != TestState.running.state:
+        await state.clear()
+ 
+ 
+def cabinet_text(u) -> str:
+    total = u["total_answers"]
+    pct = round(u["correct_answers"] / total * 100) if total else 0
+    return (f"👤 <b>Kabinet</b>\n\n"
+            f"Ism: <b>{escape(u['name'])}</b>\n"
+            f"Sinf: <b>{u['grade']}-sinf</b>\n"
+            f"⭐ Umumiy ball: <b>{u['total_score']}</b>\n"
+            f"📝 Yechilgan testlar: <b>{u['tests_taken']}</b>\n"
+            f"📊 To'g'ri javoblar: <b>{pct}%</b>")
+ 
+ 
+async def rating_text(u, by_grade: bool) -> str:
+    grade = u["grade"] if by_grade else None
+    rows = await db.top_users(10, grade)
+    rank = await db.get_rank(u["tg_id"], grade)
+    medals = {1: "🥇", 2: "🥈", 3: "🥉"}
+    lines = [f"🏫 <b>{grade}-sinf reytingi</b>" if by_grade else "🏆 <b>Umumiy reyting</b>", "",
+             f"⭐ Sizning ballingiz: <b>{u['total_score']}</b>",
+             f"📍 {'Sinfdagi' if by_grade else 'Reytingdagi'} o'rningiz: <b>{rank}</b>", "",
+             "<b>Top-10:</b>"]
+    if not rows:
+        lines.append("Hozircha natijalar yo'q.")
+    for i, r in enumerate(rows, 1):
+        lines.append(f"{medals.get(i, f'{i}.')} {escape(r['name'])} ({r['grade']}-sinf) — {r['total_score']} ball")
+    return "\n".join(lines)
+ 
+ 
+# ---------------------------- menyu tugmalari ----------------------------
+@router.message(F.text == BTN_CABINET)
+async def cabinet(m: Message, state: FSMContext):
+    await leave_state(state)
+    u = await db.get_user(m.from_user.id)
+    if not u:
+        return await m.answer(NEED_START)
+    await m.answer(cabinet_text(u), reply_markup=cabinet_kb())
+ 
+ 
+@router.message(F.text == BTN_RATING)
+async def rating(m: Message, state: FSMContext):
+    await leave_state(state)
+    u = await db.get_user(m.from_user.id)
+    if not u:
+        return await m.answer(NEED_START)
+    await m.answer(await rating_text(u, False), reply_markup=rating_kb(False))
+ 
+ 
+@router.callback_query(F.data.in_({"rating:all", "rating:grade"}))
+async def rating_switch(cb: CallbackQuery):
+    u = await db.get_user(cb.from_user.id)
+    if not u:
+        return await cb.answer(NEED_START, show_alert=True)
+    by_grade = cb.data == "rating:grade"
+    try:
+        await cb.message.edit_text(await rating_text(u, by_grade), reply_markup=rating_kb(by_grade))
+    except Exception:  # xabar o'zgarmagan bo'lsa
+        pass
+    await cb.answer()
+ 
+ 
+# ------------------------------- /start ----------------------------------
+@router.message(CommandStart())
+async def start(m: Message, state: FSMContext):
+    await state.clear()
+    u = await db.get_user(m.from_user.id)
+    if u:
+        return await m.answer(f"Xush kelibsiz, <b>{escape(u['name'])}</b>! 👋\nMenyudan tanlang:",
+                              reply_markup=main_menu())
+    await state.set_state(Reg.name)
+    await m.answer("Assalomu alaykum! 👋\nMatematika testlari botiga xush kelibsiz.\n\nIsmingizni yozing:")
+ 
+ 
+@router.message(Reg.name, F.text)
+async def reg_name(m: Message, state: FSMContext):
+    name = valid_name(m.text)
+    if not name:
+        return await m.answer("Iltimos, ismingizni to'g'ri kiriting (2–30 ta belgi).")
+    await state.update_data(name=name)
+    await m.answer("Endi sinfingizni tanlang:", reply_markup=grades_kb("reg_grade"))
+ 
+ 
+@router.callback_query(F.data.startswith("reg_grade:"), Reg.name)
+async def reg_grade(cb: CallbackQuery, state: FSMContext):
+    name = (await state.get_data()).get("name")
+    if not name:
+        return await cb.answer("Avval ismingizni yozing.", show_alert=True)
+    grade = int(cb.data.split(":")[1])
+    await db.create_user(cb.from_user.id, name, grade)
+    await state.clear()
+    await cb.message.edit_text(f"✅ Saqlandi: <b>{escape(name)}</b>, {grade}-sinf.")
+    await cb.message.answer("Asosiy menyu 👇", reply_markup=main_menu())
+    await cb.answer()
+ 
+ 
+@router.callback_query(F.data.startswith("reg_grade:"))
+async def reg_grade_stale(cb: CallbackQuery):
+    await cb.answer("Iltimos, /start ni bosing.", show_alert=True)
+ 
+ 
+# --------------------------- kabinetni tahrirlash -------------------------
+@router.callback_query(F.data == "edit_name")
+async def edit_name(cb: CallbackQuery, state: FSMContext):
+    await leave_state(state)
+    if await state.get_state() == TestState.running.state:
+        return await cb.answer("Avval testni yakunlang.", show_alert=True)
+    await state.set_state(EditName.name)
+    await cb.message.answer("Yangi ismingizni yozing:")
+    await cb.answer()
+ 
+ 
+@router.message(EditName.name, F.text)
+async def edit_name_done(m: Message, state: FSMContext):
+    name = valid_name(m.text)
+    if not name:
+        return await m.answer("Iltimos, ismni to'g'ri kiriting (2–30 ta belgi).")
+    await db.update_name(m.from_user.id, name)
+    await state.clear()
+    await m.answer(f"✅ Ism yangilandi: <b>{escape(name)}</b>", reply_markup=main_menu())
+ 
+ 
+@router.callback_query(F.data == "edit_grade")
+async def edit_grade(cb: CallbackQuery):
+    await cb.message.answer("Yangi sinfingizni tanlang:", reply_markup=grades_kb("chg_grade"))
+    await cb.answer()
+ 
+ 
+@router.callback_query(F.data.startswith("chg_grade:"))
+async def edit_grade_done(cb: CallbackQuery):
+    if not await db.get_user(cb.from_user.id):
+        return await cb.answer(NEED_START, show_alert=True)
+    grade = int(cb.data.split(":")[1])
+    await db.update_grade(cb.from_user.id, grade)
+    await cb.message.edit_text(f"✅ Sinf yangilandi: <b>{grade}-sinf</b>")
+    await cb.answer()
