@@ -1,0 +1,50 @@
+# Welcome to your Python project!
+from aiogram.types import (InlineKeyboardButton, InlineKeyboardMarkup,
+                           KeyboardButton, ReplyKeyboardMarkup)
+ 
+BTN_TEST = "📝 Test"
+BTN_CABINET = "👤 Kabinet"
+BTN_RATING = "🏆 Ballar"
+MENU_BUTTONS = {BTN_TEST, BTN_CABINET, BTN_RATING}
+ 
+ 
+def main_menu() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=BTN_TEST), KeyboardButton(text=BTN_CABINET),
+                   KeyboardButton(text=BTN_RATING)]],
+        resize_keyboard=True,
+    )
+ 
+ 
+def grades_kb(prefix: str) -> InlineKeyboardMarkup:
+    rows = [[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11]]  # 4 qator
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"{g}-sinf", callback_data=f"{prefix}:{g}") for g in row]
+        for row in rows
+    ])
+ 
+ 
+def answers_kb(tid: str, qi: int, options: list[str]) -> InlineKeyboardMarkup:
+    btns = [InlineKeyboardButton(text=f"{'ABCD'[i]}) {opt}", callback_data=f"ans:{tid}:{qi}:{i}")
+            for i, opt in enumerate(options)]
+    return InlineKeyboardMarkup(inline_keyboard=[btns[:2], btns[2:]])
+ 
+ 
+def result_kb(grade: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🔁 Yana test", callback_data=f"again:{grade}"),
+        InlineKeyboardButton(text="🏠 Menyu", callback_data="menu"),
+    ]])
+ 
+ 
+def cabinet_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Ismni o'zgartirish", callback_data="edit_name")],
+        [InlineKeyboardButton(text="🎓 Sinfni o'zgartirish", callback_data="edit_grade")],
+    ])
+ 
+ 
+def rating_kb(by_grade: bool) -> InlineKeyboardMarkup:
+    text, data = (("🏆 Umumiy reyting", "rating:all") if by_grade
+                  else ("🏫 Mening sinfim reytingi", "rating:grade"))
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=data)]])
