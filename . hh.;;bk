@@ -1,0 +1,15 @@
+# Welcome to your Python project!
+from aiogram.fsm.state import State, StatesGroup
+ 
+ 
+class Reg(StatesGroup):
+    name = State()
+ 
+ 
+class EditName(StatesGroup):
+    name = State()
+ 
+ 
+class TestState(StatesGroup):
+    running = State()
+    
