@@ -1,0 +1,610 @@
+# Welcome to your Python project!
+"""Matematika savollari generatorlari (1–11-sinf).
+ 
+"""
+from __future__ import annotations
+ 
+import random
+from dataclasses import dataclass
+from fractions import Fraction
+ 
+ 
+@dataclass(frozen=True)
+class Question:
+    text: str
+    options: list[str]
+    correct: int  # to'g'ri javob indeksi
+ 
+ 
+TOPICS: dict[int, list] = {g: [] for g in range(1, 12)}
+ 
+ 
+def topic(grade: int):
+    """Funksiyani berilgan sinf mavzulari ro'yxatiga qo'shadi."""
+    def deco(func):
+        TOPICS[grade].append(func)
+        return func
+    return deco
+ 
+ 
+# ----------------------------- yordamchilar -----------------------------
+_SUP = str.maketrans("0123456789-", "⁰¹²³⁴⁵⁶⁷⁸⁹⁻")
+_SUB = str.maketrans("0123456789", "₀₁₂₃₄₅₆₇₈₉")
+ 
+ 
+def sup(n) -> str:
+    return str(n).translate(_SUP)
+ 
+ 
+def sub(n) -> str:
+    return str(n).translate(_SUB)
+ 
+ 
+def xp(k: int) -> str:
+    """x ning k-darajasi: '', 'x', 'x²', ..."""
+    return "" if k == 0 else "x" if k == 1 else "x" + sup(k)
+ 
+ 
+def fmt(x) -> str:
+    if isinstance(x, Fraction):
+        return str(x.numerator) if x.denominator == 1 else f"{x.numerator}/{x.denominator}"
+    if isinstance(x, float):
+        s = f"{round(x, 4):.4f}".rstrip("0").rstrip(".")
+        return "0" if s in ("-0", "") else s.replace(".", ",")
+    return str(x)
+ 
+ 
+def poly(terms: list[tuple[int, str]]) -> str:
+    """[(koeff, 'x²'), ...] -> '3x² - x + 5'"""
+    out = ""
+    for coef, var in terms:
+        if coef == 0:
+            continue
+        mag = abs(coef)
+        body = (str(mag) if (mag != 1 or not var) else "") + var
+        if not out:
+            out = ("-" if coef < 0 else "") + body
+        else:
+            out += f" {'-' if coef < 0 else '+'} {body}"
+    return out or "0"
+ 
+ 
+def pw(n: int) -> str:
+    return f"({n})" if n < 0 else str(n)
+ 
+ 
+def _nudge(c, negative: bool):
+    if isinstance(c, Fraction):
+        return c + Fraction(random.choice([-1, 1]) * random.randint(1, 3), c.denominator)
+    if isinstance(c, float):
+        return c + random.choice([-1, 1]) * random.randint(1, 9) / 10
+    if isinstance(c, int):
+        return c + random.choice([-1, 1]) * random.randint(1, 6)
+    raise ValueError("Matnli javob uchun yetarli noto'g'ri variantlar berilmagan")
+ 
+ 
+def build(text: str, correct, wrong: list, negative: bool = False) -> Question:
+    """4 ta variantli savol yasaydi; to'g'ri javob o'rni tasodifiy."""
+    right = fmt(correct)
+    options: list[str] = []
+    random.shuffle(wrong)
+    for w in wrong:
+        if not negative and isinstance(w, (int, float, Fraction)) and w < 0:
+            continue
+        s = fmt(w)
+        if s != right and s not in options:
+            options.append(s)
+    options = options[:3]
+    tries = 0
+    while len(options) < 3:
+        tries += 1
+        if tries > 200:
+            raise ValueError(f"Variant yetishmadi: {text}")
+        v = _nudge(correct, negative)
+        if not negative and v < 0:
+            continue
+        s = fmt(v)
+        if s != right and s not in options:
+            options.append(s)
+    options.append(right)
+    random.shuffle(options)
+    return Question(text, options, options.index(right))
+ 
+ 
+# ------------------------------- 1-sinf ---------------------------------
+@topic(1)
+def g1_add_sub():
+    if random.random() < 0.5:
+        a = random.randint(1, 19)
+        b = random.randint(1, 20 - a)
+        c, text = a + b, f"{a} + {b} = ?"
+    else:
+        a = random.randint(2, 20)
+        b = random.randint(1, a - 1)
+        c, text = a - b, f"{a} - {b} = ?"
+    return build(text, c, [c + 1, c - 1, c + 2, c - 2, c + 10, c - 10])
+ 
+ 
+@topic(1)
+def g1_missing():
+    b = random.randint(1, 9)
+    c = random.randint(b + 1, 20)
+    a = c - b
+    return build(f"□ + {b} = {c}. □ = ?", a, [a + 1, a - 1, a + 2, c + b, b])
+ 
+ 
+# ------------------------------- 2-sinf ---------------------------------
+@topic(2)
+def g2_add_sub_100():
+    if random.random() < 0.5:
+        a = random.randint(11, 89)
+        b = random.randint(10, 100 - a)
+        c, text = a + b, f"{a} + {b} = ?"
+    else:
+        a = random.randint(30, 100)
+        b = random.randint(10, a - 1)
+        c, text = a - b, f"{a} - {b} = ?"
+    return build(text, c, [c + 10, c - 10, c + 1, c - 1, c + 2])
+ 
+ 
+@topic(2)
+def g2_mult_start():
+    a, b = random.randint(2, 5), random.randint(1, 10)
+    c = a * b
+    return build(f"{a} × {b} = ?", c, [c + a, c - a, c + b, c - b, a + b])
+ 
+ 
+# ------------------------------- 3-sinf ---------------------------------
+@topic(3)
+def g3_mult_table():
+    a, b = random.randint(2, 9), random.randint(2, 9)
+    c = a * b
+    return build(f"{a} × {b} = ?", c, [c + a, c - a, c + b, c - b, a + b])
+ 
+ 
+@topic(3)
+def g3_div_table():
+    b, q = random.randint(2, 9), random.randint(2, 9)
+    return build(f"{b * q} : {b} = ?", q, [q + 1, q - 1, q + 2, q - 2, b])
+ 
+ 
+@topic(3)
+def g3_within_1000():
+    if random.random() < 0.5:
+        a = random.randint(120, 880)
+        b = random.randint(100, 999 - a)
+        c, text = a + b, f"{a} + {b} = ?"
+    else:
+        a = random.randint(300, 999)
+        b = random.randint(100, a - 100)
+        c, text = a - b, f"{a} - {b} = ?"
+    return build(text, c, [c + 10, c - 10, c + 100, c - 100, c + 1, c - 1])
+ 
+ 
+# ------------------------------- 4-sinf ---------------------------------
+@topic(4)
+def g4_multi_digit():
+    r = random.random()
+    if r < 0.4:
+        a, b = random.randint(100, 999), random.randint(2, 9)
+        c, text = a * b, f"{a} × {b} = ?"
+    elif r < 0.7:
+        a, b = random.randint(12, 99), random.randint(11, 99)
+        c, text = a * b, f"{a} × {b} = ?"
+    else:
+        a, b = random.randint(1000, 8999), random.randint(1000, 9999 - 1000)
+        c, text = a + b, f"{a} + {b} = ?"
+    return build(text, c, [c + 10, c - 10, c + 100, c - 100, c + 1000, c - 1000])
+ 
+ 
+@topic(4)
+def g4_division():
+    b, q = random.randint(2, 9), random.randint(100, 999)
+    return build(f"{b * q} : {b} = ?", q, [q + 1, q - 1, q + 10, q - 10, q + 100])
+ 
+ 
+@topic(4)
+def g4_fractions():
+    n = random.randint(4, 12)
+    if random.random() < 0.5:
+        a = random.randint(1, n - 2)
+        b = random.randint(1, n - 1 - a)
+        ans, text = f"{a + b}/{n}", f"{a}/{n} + {b}/{n} = ?"
+        wrong = [f"{a + b}/{2 * n}", f"{a + b + 1}/{n}", f"{a + b - 1}/{n}",
+                 f"{a * b}/{n}", f"{a + b}/{n + 1}"]
+    else:
+        a = random.randint(2, n - 1)
+        b = random.randint(1, a - 1)
+        ans, text = f"{a - b}/{n}", f"{a}/{n} - {b}/{n} = ?"
+        wrong = [f"{a - b}/{2 * n}", f"{a + b}/{n}", f"{a - b + 1}/{n}",
+                 f"{a - b - 1}/{n}", f"{a - b}/{n - 1}"]
+    return build(text, ans, wrong)
+ 
+ 
+@topic(4)
+def g4_fraction_of_number():
+    d = random.randint(2, 8)
+    n = random.randint(1, d - 1)
+    k = random.randint(2, 9)
+    total, c = d * k, k * n
+    return build(f"{total} sonining {n}/{d} qismini toping.", c,
+                 [k, total - c, c + d, c + n, total])
+ 
+ 
+# ------------------------------- 5-sinf ---------------------------------
+@topic(5)
+def g5_decimals():
+    A, B = random.randint(11, 99), random.randint(11, 99)
+    if random.random() < 0.5:
+        c, text = (A + B) / 10, f"{fmt(A / 10)} + {fmt(B / 10)} = ?"
+    else:
+        if A == B:
+            B -= 1
+        A, B = max(A, B), min(A, B)
+        c, text = (A - B) / 10, f"{fmt(A / 10)} - {fmt(B / 10)} = ?"
+    return build(text, c, [c + 0.1, c - 0.1, c + 1, c - 1, c * 10, c / 10])
+ 
+ 
+@topic(5)
+def g5_decimal_mult():
+    A, B = random.randint(2, 9), random.randint(2, 9)
+    c = A * B / 100
+    return build(f"{fmt(A / 10)} · {fmt(B / 10)} = ?", c,
+                 [A * B / 10, A * B, A * B / 1000, c + 0.1, c + 0.01])
+ 
+ 
+@topic(5)
+def g5_fraction_add():
+    b, d = random.sample([2, 3, 4, 5, 6, 8], 2)
+    a, c = random.randint(1, b - 1), random.randint(1, d - 1)
+    ans = Fraction(a, b) + Fraction(c, d)
+    wrong = [Fraction(a + c, b + d), Fraction(a + c, b * d), Fraction(a * c, b * d),
+             ans + Fraction(1, b), ans - Fraction(1, d)]
+    return build(f"{a}/{b} + {c}/{d} = ?  (qisqartirilgan holda)", ans, wrong)
+ 
+ 
+@topic(5)
+def g5_gcd_lcm():
+    g = random.randint(2, 9)
+    m, n = random.choice([(2, 3), (3, 4), (2, 5), (3, 5), (4, 5),
+                          (3, 7), (2, 7), (5, 6), (4, 7), (5, 7)])
+    a, b, lcm = g * m, g * n, g * m * n
+    if random.random() < 0.5:
+        return build(f"{a} va {b} sonlarining EKUB (eng katta umumiy bo'luvchi) ini toping.",
+                     g, [lcm, g * 2, g * 3, m, n, g + 1])
+    return build(f"{a} va {b} sonlarining EKUK (eng kichik umumiy karrali) ini toping.",
+                 lcm, [a * b, lcm + g, lcm - g, m * n, a + b])
+ 
+ 
+@topic(5)
+def g5_equation():
+    kind = random.choice(["add", "sub", "mul", "div"])
+    if kind == "add":
+        x, a = random.randint(5, 40), random.randint(2, 9)
+        text, wrong = f"x + {a} = {x + a}", [x + 2 * a, x + 1, x - 1, a]
+    elif kind == "sub":
+        x, a = random.randint(5, 40), random.randint(2, 9)
+        text, wrong = f"x - {a} = {x - a}", [x - 2 * a, x + 1, x - 1, a]
+    elif kind == "mul":
+        x, a = random.randint(2, 12), random.randint(2, 9)
+        text, wrong = f"{a}x = {a * x}", [x + 1, x - 1, x + 2, x - 2, a * x]
+    else:
+        a, b = random.randint(2, 9), random.randint(2, 12)
+        x, text, wrong = a * b, f"x : {a} = {b}", [b, a * b + a, a * b - a, a * b + 1]
+    return build("Tenglamani yeching: " + text, x, wrong)
+ 
+ 
+# ------------------------------- 6-sinf ---------------------------------
+@topic(6)
+def g6_negative():
+    nz = [i for i in range(-12, 13) if i]
+    a, b = random.choice(nz), random.choice(nz)
+    op = random.choice(["+", "-", "×"])
+    c = a + b if op == "+" else a - b if op == "-" else a * b
+    other = a - b if op == "+" else a + b
+    wrong = [-c, c + 1, c - 1, c + 2, abs(a) + abs(b), other]
+    return build(f"{a} {op} {pw(b)} = ?", c, wrong, negative=True)
+ 
+ 
+@topic(6)
+def g6_proportion():
+    a, k, c = random.randint(2, 9), random.randint(2, 6), random.randint(2, 9)
+    b, x = a * k, c * k
+    return build(f"Proporsiyani yeching: {a} : {b} = {c} : x.  x = ?", x,
+                 [b * c, c + b - a, x + k, x - k, x + 1])
+ 
+ 
+@topic(6)
+def g6_percent():
+    p = random.choice([5, 10, 15, 20, 25, 30, 40, 50, 60, 75])
+    N = 20 * random.randint(1, 25)
+    c = p * N // 100
+    return build(f"{N} ning {p}% ini toping.", c, [c * 10, N - c, c + p, abs(c - p), c + 10])
+ 
+ 
+# ------------------------------- 7-sinf ---------------------------------
+@topic(7)
+def g7_linear_eq():
+    a = random.choice([2, 3, 4, 5, 6, 7, 8, 9, -2, -3, -4, -5])
+    x = random.choice([i for i in range(-8, 13) if i])
+    b = random.choice([i for i in range(-15, 16) if i])
+    c = a * x + b
+    wrong = [-x, x + 1, x - 1, x + 2, Fraction(c + b, a)]
+    return build(f"Tenglamani yeching: {poly([(a, 'x'), (b, '')])} = {c}", x, wrong, negative=True)
+ 
+ 
+@topic(7)
+def g7_formulas():
+    if random.random() < 0.5:
+        a, s = random.randint(2, 9), random.choice([1, -1])
+        text = f"(x {'+' if s > 0 else '-'} {a})² = ?"
+        correct = poly([(1, "x²"), (2 * a * s, "x"), (a * a, "")])
+        wrong = [poly([(1, "x²"), (a * a, "")]),
+                 poly([(1, "x²"), (a * s, "x"), (a * a, "")]),
+                 poly([(1, "x²"), (2 * a * s, "x"), (-a * a, "")]),
+                 poly([(1, "x²"), (-2 * a * s, "x"), (a * a, "")])]
+        return build(text, correct, wrong)
+    a = random.randint(21, 69)
+    d = random.randint(1, 4)
+    b = a - d
+    c = d * (a + b)
+    return build(f"Hisoblang: {a}² - {b}²", c,
+                 [(a - b) ** 2, a + b, c + d, c - 10, c + 10, a * a + b * b - 2 * a])
+ 
+ 
+@topic(7)
+def g7_function():
+    a = random.choice([2, 3, 4, 5, -2, -3])
+    b = random.choice([i for i in range(-9, 10) if i])
+    x = random.choice([i for i in range(-4, 7) if i])
+    c = a * x + b
+    wrong = [a * x - b, -a * x + b, c + a, c - a, a + b + x]
+    return build(f"f(x) = {poly([(a, 'x'), (b, '')])} bo'lsa, f({x}) = ?", c, wrong, negative=True)
+ 
+ 
+# ------------------------------- 8-sinf ---------------------------------
+@topic(8)
+def g8_sqrt():
+    if random.random() < 0.5:
+        k = random.randint(2, 20)
+        return build(f"√{k * k} = ?", k, [k + 1, k - 1, k + 2, k * k // 2, k * 2])
+    k1, k2 = random.randint(2, 12), random.randint(2, 12)
+    s = k1 + k2
+    return build(f"√{k1 * k1} + √{k2 * k2} = ?", s, [k1 * k2, s + 1, s - 1, s + 2])
+ 
+ 
+@topic(8)
+def g8_quadratic_roots():
+    nz = [i for i in range(-8, 10) if i]
+    p, q = random.sample(nz, 2)
+    eq = poly([(1, "x²"), (-(p + q), "x"), (p * q, "")])
+ 
+    def pair(u, v):
+        return f"{min(u, v)} va {max(u, v)}"
+    wrong = [pair(-p, -q), pair(p, -q), pair(-p, q), pair(p + 1, q), pair(p, q - 1)]
+    return build(f"Tenglamani yeching: {eq} = 0", pair(p, q), wrong)
+ 
+ 
+@topic(8)
+def g8_discriminant():
+    a = random.randint(1, 3)
+    b = random.choice([i for i in range(-8, 9) if i])
+    c = random.choice([i for i in range(-6, 7) if i])
+    D = b * b - 4 * a * c
+    wrong = [b * b + 4 * a * c, b * b - 2 * a * c, D + 4, D - 4, -D, b * b]
+    return build(f"{poly([(a, 'x²'), (b, 'x'), (c, '')])} = 0 tenglamaning diskriminantini toping.",
+                 D, wrong, negative=True)
+ 
+ 
+TRIPLES = [(3, 4, 5), (5, 12, 13), (8, 15, 17), (7, 24, 25), (20, 21, 29), (9, 40, 41)]
+ 
+ 
+@topic(8)
+def g8_pythagoras():
+    a, b, c = random.choice(TRIPLES)
+    k = random.randint(1, 3) if c <= 17 else 1
+    a, b, c = a * k, b * k, c * k
+    if random.random() < 0.5:
+        a, b = b, a
+    if random.random() < 0.5:
+        return build(f"To'g'ri burchakli uchburchakning katetlari {a} va {b}. "
+                     f"Gipotenuzasini toping.", c, [a + b, c + 1, c - 1, c + 2, abs(a - b)])
+    return build(f"To'g'ri burchakli uchburchakning gipotenuzasi {c}, bir kateti {a}. "
+                 f"Ikkinchi katetini toping.", b, [c - a, b + 1, b - 1, b + 2, c + a])
+ 
+ 
+# ------------------------------- 9-sinf ---------------------------------
+@topic(9)
+def g9_inequality():
+    a = random.choice([2, 3, 4, 5, 6, 7, -2, -3, -4, -5, -6])
+    x0 = random.choice([i for i in range(-6, 9) if i])
+    b = random.choice([i for i in range(-12, 13) if i])
+    op = random.choice([">", "<"])
+    c = a * x0 + b
+ 
+    def flip(o):
+        return "<" if o == ">" else ">"
+    cop = op if a > 0 else flip(op)
+    soft = {">": "≥", "<": "≤"}
+    wrong = [f"x {flip(cop)} {x0}", f"x {cop} {-x0}", f"x {flip(cop)} {-x0}", f"x {soft[cop]} {x0}"]
+    return build(f"Tengsizlikni yeching: {poly([(a, 'x'), (b, '')])} {op} {c}",
+                 f"x {cop} {x0}", wrong)
+ 
+ 
+@topic(9)
+def g9_progression():
+    kind = random.choice(["an", "sn", "bn"])
+    if kind == "an":
+        a1, d, n = random.randint(-5, 12), random.choice([2, 3, 4, 5, -2, -3]), random.randint(6, 15)
+        c = a1 + (n - 1) * d
+        text = f"Arifmetik progressiyada a{sub(1)} = {a1}, d = {d}. a{sub(n)} = ?"
+        wrong = [a1 + n * d, a1 + (n - 2) * d, c + d, c - d, c + 1]
+    elif kind == "sn":
+        a1, d, n = random.randint(1, 10), random.choice([2, 3, 4, 5]), random.randint(5, 12)
+        c = n * (2 * a1 + (n - 1) * d) // 2
+        text = f"Arifmetik progressiyada a{sub(1)} = {a1}, d = {d}. Dastlabki {n} ta hadi yig'indisi S{sub(n)} = ?"
+        wrong = [c + n, c - n, n * (a1 + (n - 1) * d), c + d, c - d]
+    else:
+        b1, q, n = random.randint(1, 5), random.choice([2, 3]), random.randint(4, 6)
+        c = b1 * q ** (n - 1)
+        text = f"Geometrik progressiyada b{sub(1)} = {b1}, q = {q}. b{sub(n)} = ?"
+        wrong = [b1 * q ** n, b1 * q ** (n - 2), b1 + (n - 1) * q, b1 * q * (n - 1), c + b1]
+    return build(text, c, wrong, negative=True)
+ 
+ 
+@topic(9)
+def g9_system():
+    while True:
+        a1, a2 = random.randint(1, 4), random.randint(1, 4)
+        b1, b2 = random.choice([-4, -3, -2, -1, 1, 2, 3, 4]), random.choice([-4, -3, -2, -1, 1, 2, 3, 4])
+        if a1 * b2 - a2 * b1 != 0:
+            break
+    nz = [i for i in range(-5, 7) if i]
+    x, y = random.choice(nz), random.choice(nz)
+    e1 = f"{poly([(a1, 'x'), (b1, 'y')])} = {a1 * x + b1 * y}"
+    e2 = f"{poly([(a2, 'x'), (b2, 'y')])} = {a2 * x + b2 * y}"
+    wrong = [f"({y}; {x})", f"({-x}; {y})", f"({x}; {-y})", f"({x + 1}; {y})", f"({x}; {y + 1})"]
+    return build(f"Tenglamalar sistemasini yeching (x; y):\n{e1}\n{e2}", f"({x}; {y})", wrong)
+ 
+ 
+# ------------------------------- 10-sinf --------------------------------
+SIN = {0: "0", 30: "1/2", 45: "√2/2", 60: "√3/2", 90: "1"}
+COS = {0: "1", 30: "√3/2", 45: "√2/2", 60: "1/2", 90: "0"}
+TAN = {0: "0", 30: "√3/3", 45: "1", 60: "√3"}
+TRIG_POOL = ["0", "1/2", "√2/2", "√3/2", "1", "√3/3", "√3"]
+ 
+ 
+@topic(10)
+def g10_trig_values():
+    name, table = random.choice([("sin", SIN), ("cos", COS), ("tg", TAN)])
+    ang = random.choice(list(table))
+    correct = table[ang]
+    return build(f"{name} {ang}° = ?", correct, [p for p in TRIG_POOL if p != correct])
+ 
+ 
+@topic(10)
+def g10_trig_identity():
+    a, b, c = random.choice([(3, 4, 5), (5, 12, 13), (8, 15, 17), (7, 24, 25)])
+    return build(f"sin α = {a}/{c} va 0° < α < 90°. cos α = ?", f"{b}/{c}",
+                 [f"{a}/{b}", f"{c}/{b}", f"{a}/{c}", f"{b}/{a}"])
+ 
+ 
+@topic(10)
+def g10_powers():
+    kind = random.choice(["mul", "div", "pow", "neg"])
+    if kind == "mul":
+        a, m, n = random.choice([2, 3]), random.randint(1, 4), random.randint(1, 4)
+        c, text = a ** (m + n), f"{a}{sup(m)} · {a}{sup(n)} = ?"
+        wrong = [c * a, c // a, a ** m + a ** n, a * (m + n), c + a]
+    elif kind == "div":
+        a, n = random.choice([2, 3]), random.randint(1, 3)
+        m = n + random.randint(1, 4)
+        c, text = a ** (m - n), f"{a}{sup(m)} : {a}{sup(n)} = ?"
+        wrong = [c * a, c + a, a * (m - n), c - 1, c + 1]
+    elif kind == "pow":
+        a, m, n = random.choice([2, 3]), random.randint(2, 3), random.randint(2, 3)
+        c, text = a ** (m * n), f"({a}{sup(m)}){sup(n)} = ?"
+        wrong = [a ** (m + n), c * a, c // a, a ** m * n, a ** n * m]
+    else:
+        a, n = random.randint(2, 5), random.randint(1, 3)
+        c, text = Fraction(1, a ** n), f"{a}{sup(-n)} = ?"
+        wrong = [-(a ** n), Fraction(1, a * n), Fraction(-1, a ** n), Fraction(1, a ** (n + 1)), a ** n]
+    return build(text, c, wrong, negative=True)
+ 
+ 
+@topic(10)
+def g10_logs():
+    b = random.choice([2, 3, 5, 10])
+    if random.random() < 0.5:
+        k = random.randint(1, 4)
+        return build(f"log{sub(b)} {b ** k} = ?", k, [k + 1, k - 1, k + 2, b * k, b ** k // b])
+    k1, k2 = random.randint(1, 3), random.randint(1, 3)
+    s = k1 + k2
+    return build(f"log{sub(b)} {b ** k1} + log{sub(b)} {b ** k2} = ?", s,
+                 [k1 * k2, s + 1, s - 1, abs(k1 - k2), s + 2])
+ 
+ 
+# ------------------------------- 11-sinf --------------------------------
+DERIVS = [("sin x", "cos x"), ("cos x", "-sin x"), ("eˣ", "eˣ"),
+          ("ln x", "1/x"), ("tg x", "1/cos² x"), ("√x", "1/(2√x)")]
+DERIV_POOL = ["cos x", "-sin x", "eˣ", "1/x", "1/cos² x", "1/(2√x)", "sin x", "-cos x"]
+ 
+ 
+@topic(11)
+def g11_derivative_formula():
+    if random.random() < 0.5:
+        f, d = random.choice(DERIVS)
+        return build(f"f(x) = {f} bo'lsa, f'(x) = ?", d, [p for p in DERIV_POOL if p != d])
+    a, n = random.randint(1, 6), random.randint(2, 6)
+    wrong = [poly([(a * n, xp(n))]), poly([(a, xp(n - 1))]),
+             poly([(a * (n - 1), xp(n - 1))]), poly([(a * n, xp(n - 2))])]
+    return build(f"f(x) = {poly([(a, xp(n))])} bo'lsa, f'(x) = ?", poly([(a * n, xp(n - 1))]), wrong)
+ 
+ 
+@topic(11)
+def g11_derivative_value():
+    a = random.randint(1, 4)
+    b = random.choice([-4, -3, -2, 2, 3, 4])
+    c = random.choice([i for i in range(-8, 9) if i])
+    x0 = random.choice([-2, -1, 1, 2, 3])
+    d = 3 * a * x0 ** 2 + 2 * b * x0 + c
+    wrong = [a * x0 ** 3 + b * x0 ** 2 + c * x0, 3 * a * x0 ** 2 + 2 * b * x0,
+             3 * a * x0 ** 2 + b * x0 + c, d + x0, d - x0]
+    f = poly([(a, "x³"), (b, "x²"), (c, "x")])
+    return build(f"f(x) = {f} bo'lsa, f'({x0}) = ?", d, wrong, negative=True)
+ 
+ 
+@topic(11)
+def g11_integral():
+    n = random.randint(1, 3)
+    m = random.randint(1, 4)
+    k = (n + 1) * m
+    if random.random() < 0.5:
+        b = random.randint(1, 3)
+        c = m * b ** (n + 1)
+        wrong = [k * b ** (n + 1), m * b ** n, c + m, k * b ** n, c + b]
+        return build(f"∫ {poly([(k, xp(n))])} dx integralni [0; {b}] kesmada hisoblang.", c, wrong)
+    wrong = [poly([(k * (n + 1), xp(n + 1))]), poly([(m, xp(n))]), poly([(k, xp(n + 1))])]
+    ans = poly([(m, xp(n + 1))]) + " + C"
+    return build(f"∫ {poly([(k, xp(n))])} dx = ?", ans, [w + " + C" for w in wrong] + [ans.replace(" + C", "")])
+ 
+ 
+@topic(11)
+def g11_exponential():
+    b, x, s = random.choice([2, 3, 5]), random.randint(1, 4), random.randint(1, 3)
+    if random.random() < 0.5:
+        text = f"{b}^x = {b ** x}"
+        wrong = [b ** x, x + 1, x - 1, x * b]
+    else:
+        text = f"{b}^(x + {s}) = {b ** (x + s)}"
+        wrong = [x + s, x - s, x + 1, x - 1]
+    return build("Tenglamani yeching: " + text, x, wrong, negative=True)
+ 
+ 
+@topic(11)
+def g11_logarithmic():
+    b, k = random.choice([2, 3, 5]), random.randint(2, 4)
+    if random.random() < 0.5:
+        x, text = b ** k, f"log{sub(b)} x = {k}"
+        wrong = [b * k, k ** b, b ** k + 1, b ** k - 1, b + k]
+    else:
+        s = random.randint(1, 5)
+        x, text = b ** k - s, f"log{sub(b)}(x + {s}) = {k}"
+        wrong = [b * k - s, b ** k + s, b ** k, k - s, b ** k - s + 1]
+    return build("Tenglamani yeching: " + text, x, wrong, negative=True)
+ 
+ 
+# --------------------------- test generatsiyasi -------------------------
+def generate_test(grade: int, n: int = 10) -> list[Question]:
+    """Berilgan sinf uchun n ta takrorlanmaydigan savol qaytaradi."""
+    funcs = TOPICS[grade]
+    questions: list[Question] = []
+    seen: set[str] = set()
+    for _ in range(500):
+        if len(questions) >= n:
+            break
+        q = random.choice(funcs)()
+        if q.text not in seen:
+            seen.add(q.text)
+            questions.append(q)
+    return questions
